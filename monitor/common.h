@@ -8,7 +8,7 @@
 #define SERVER_PORT "6600"
 #define HANDLE_PORT "6599"
 
-#define PROT_SIZE 8
+#define PROT_SIZE 16
 #define MAGIC_NUMBER 0xAB39FF
 
 typedef struct {
