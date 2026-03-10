@@ -111,12 +111,6 @@ static float CalculateCPUUsage(struct cpu_time *t1, struct cpu_time *t2)
 
 // ############ Connection Logic ############
 
-typedef struct {
-  int sockfd;
-  struct sockaddr_storage addr;
-  socklen_t addr_len;
-} Connection;
-
 static int ReadIP(char *buffer)
 {
   FILE *f = fopen(SERVER_IP_PATH, "r");
@@ -268,8 +262,6 @@ int main()
       syslog(LOG_WARNING, "Failed to send monitoring data");
     }
     Move(&t1, &t2);
-
-    break;
   }
 
   close(conn.sockfd);
