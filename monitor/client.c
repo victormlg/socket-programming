@@ -136,7 +136,7 @@ static int ReadIP(char *buffer)
   return 0;
 }
 
-static int InitConnection(Connection *conn, char *ip)
+static int InitUDPConnection(Connection *conn, char *ip)
 {
   int sockfd, ret;
   struct addrinfo hints, *server_info, *p;
@@ -182,6 +182,71 @@ static int SendData(Connection *conn, MonitorData *data)
   return 0;
 }
 
+int GetHandle(char *ip, MonitorData *data)
+{
+  int sockfd, ret;
+  struct addrinfo hints, *server_info, *p;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  if ((ret = getaddrinfo(ip, HANDLE_PORT, &hints, &server_info)) != 0)
+  {
+    syslog(LOG_ERR, "Couldn't get address info: %s", gai_strerror(ret));
+    return -1;
+  }
+
+  for (p = server_info; p != NULL; p = p->ai_next)
+  {
+    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
+    {
+      syslog(LOG_DEBUG, "Socket error: %m");
+      continue;
+    }
+    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
+    {
+      syslog(LOG_DEBUG, "Connect error: %m");
+      close(sockfd);
+      continue;
+    }
+    break;
+  }
+
+  if (p == NULL)
+  {
+    syslog(LOG_ERR, "Couldn't establish a connection via TCP");
+    return -1;
+  }
+
+  freeaddrinfo(server_info);
+
+  uint8_t binary_data[PROT_SIZE];
+  if (recv(sockfd, binary_data, PROT_SIZE, 0) == -1) {
+    syslog(LOG_ERR, "Failed while receiving data");
+    close(sockfd);
+    return -1;
+  }
+  if (Deserialize(data, binary_data) != 0)
+  {
+    syslog(LOG_ERR, "Couldn't deserialize packet");
+    close(sockfd);
+    return -1;
+  }
+
+  if (data->handle == -1)
+  {
+    syslog(LOG_ERR, "No free handle avalaible");
+    return -1;
+  }
+
+  syslog(LOG_INFO, "Received handle '%d'", data->handle);
+  
+  close(sockfd);
+  return 0;
+}
+
+
 // ############ Main logic ############
 
 static void DaemonStart()
@@ -222,7 +287,8 @@ static void DaemonStart()
 
 int main()
 {
-//DaemonStart();
+  DaemonStart();
+  syslog(LOG_INFO, "Starting mlg-monitor-client");
 
   char buffer[BUFFER_SIZE];
   struct cpu_time t1, t2;
@@ -240,13 +306,19 @@ int main()
     goto cleanup;
   }
 
-  if (InitConnection(&conn, buffer) != 0)
+  MonitorData data;
+  if (GetHandle(buffer, &data) != 0)
+  {
+    syslog(LOG_ERR, "Fatal: Unable to get handle");
+    goto cleanup;
+  }
+
+  if (InitUDPConnection(&conn, buffer) != 0)
   {
     syslog(LOG_ERR, "Fatal: Couldn't initialize network");
     goto cleanup;
   }
 
-  MonitorData data;
   while (1)
   {
     sleep(SLEEP_TIME);
